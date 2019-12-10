@@ -4,7 +4,7 @@ from flask_cors import CORS
 from chart import *
 
 app = Flask(__name__)
-cors = CORS(app, resources={r"/*": {"origins": "*"}})
+cors = CORS(app, resources=r'/*')
 
 
 @app.route('/')
