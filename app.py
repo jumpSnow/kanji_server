@@ -40,7 +40,8 @@ def data_kanji():
 @app.route('/data_table/box_1', methods=["GET"])
 @cross_origin()
 def data_box_1():
-    return jsonify(box_1())
+    data = box_1()
+    return jsonify(data)
 
 
 @app.route('/data_table/box_2', methods=["GET"])

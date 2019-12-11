@@ -74,9 +74,7 @@ def box_1():
     # So container[1] is kanjis with 1 stroke, their frequency ranks
 
     # Title, xlabel, ylabel
-    title = "number of strokes (X) - rank of frequency(Y)"
-    x_label = "number of strokes (count of characters)"
-    y_lable = "rank of frequency used in newspaper"
+
 
     # Generate xticks and its labels
     xticks = []
@@ -97,7 +95,10 @@ def box_1():
             close=int(np.percentile(i, 75)),
             strokes=j,
         ))
-    return res
+    title = "Number of strokes (X) - rank of frequency(Y)"
+    x = "Number of strokes (count of characters)"
+    y = "Rank of frequency used in newspaper"
+    return dict(data=res, title=title, x_name=x, y_name=y)
 
 
 def box_2():
@@ -151,7 +152,9 @@ def box_2():
     data = container2
     x_ticks = np.arange(1, len(grades) + 1)
     x_label = xticks21
-
+    title = "Grades (X) - rank of frequency(Y)"
+    x = "Grades (count of characters in grade)"
+    y = "Rank of frequency used in newspaper"
     res = list()
     for i, j, k in zip(data, x_label, x_ticks):
         i.sort()
@@ -162,7 +165,7 @@ def box_2():
             close=int(np.percentile(i, 75)),
             strokes=j,
         ))
-    return res
+    return dict(data=res, title=title, x_name=x, y_name=y)
 
 
 def box_3():
@@ -320,5 +323,295 @@ def chart_4():
     axis42.legend(loc='best')
 
 
+def scatter(n):
+    filename = "level_correlation_results.csv"
+    df = pd.read_csv(filename)
+    print(len(df))
+    df.head()
+    # Index and Unnamed: 0 are the Joyo ranking.
+    # When using the Joyo ranking I use the Unnamed: 0 as the column, so the index should be irrelevant to this program.
+    # TODO: maybe just remove Joyo analysis.
+
+    # %%
+
+    datasources = ["Twitter", "Aozora", "Wikipedia", "News"]
+    # levelsources = ["wanikani_level"]
+    kanjis = df["kanji"]
+
+    # %%
+
+    def createBins(numberOfBins, col):
+        # Create a sorted version of the column.
+        arr = []
+        for value in col:
+            arr.append(value)
+        arr.sort()
+        # qcut to get bin numbers for the column.
+        #    Each column's kanji now has a numeric level equivalent based on frequency.
+        #    This will allow us to compare bins, like N5 through N1 vs bins 1 through 5.
+        bins = pd.qcut(arr, numberOfBins, labels=False)
+        # Lets not start at 0, levels start at 1 for everything.
+        bins += 1
+        print("Created", len(bins), "bins: " + str(bins))
+        return bins
+
+    # %%
+
+    # Col name should be the col of the dataframe with the levels,
+    #    translator translates those level strings to integer levels from 1..max_level, inclusive,
+    #        Ex: "N5" translator should say is 1, while "N1" should be 5. (lowest to highest difficulty)
+    #    max_level is how many levels, like 60 for WaniKani's 1..60 system, or 5 for JLPT.
+    def getAvgLevelDiff(level_col_name, translator, max_level):
+        results = []
+        for sourceName in datasources:
+            bins = createBins(max_level, df["Rank of Appearances on " + sourceName])
+            rankLevel_col = pd.DataFrame(bins)
+            rankLevel_col.columns = ["Rank Converted to Level"]
+            new_df = df.join(rankLevel_col)
+            numberOfComparisons = 0
+            numberOfLevelDifference = 0
+            for kanji in kanjis:
+                row = new_df[kanjis == kanji].iloc[0]
+                colValue = row[level_col_name]
+                # We need a numeric representation of the level, which our caller will define
+                colLevel = translator(colValue)
+                # I should maybe separate into 60 bins for comparison.
+                # Then take the average "level" number compared with the waniLevel?
+                # rank = row["Rank of Appearances on "+sourceName]
+                # print("rank="+str(rank))
+                rankLevel = row["Rank Converted to Level"]
+                # print("rankLevel="+str(rankLevel))
+                diff = abs(colLevel - rankLevel)
+                if (not np.isnan(diff)):
+                    numberOfComparisons += 1
+                    numberOfLevelDifference += diff
+                    # print("Adding diff "+str(diff)+" because wkl="+str(waniLevel)+" versus rankLevel="+str(rankLevel))
+            averageLevelDifference = numberOfLevelDifference / numberOfComparisons
+            results.append(averageLevelDifference)
+            print(sourceName + " vs " + level_col_name + " average level difference=" + str(averageLevelDifference))
+        return results
+
+    # %%
+
+    # How strongly does WaniKani level corrolate with each source?
+    # WaniKani levels range from 1 to 60, with higher being harder (or rather, learned later. Harder or more obscure.).
+    intIsJustItself = lambda x: x
+    wani_levels = 60
+    wani_results = getAvgLevelDiff("wanikani_level", intIsJustItself, wani_levels)
+
+    # %%
+
+    # How strongly does JLPT level corrolate with each source?
+    # Low N# means higher level. Scale of N1 to N5.
+    levelValues = {"N" + str(i): (5 + 1) - i for i in range(1, 5 + 1)}
+    print(levelValues)
+    print(type(levelValues))
+
+    def translateJLPT(levelStr):
+        try:
+            return levelValues[levelStr]
+        except:
+            return float('nan')
+
+    print(translateJLPT("N1"))
+    JLPT_levels = 5
+    JLPT_results = getAvgLevelDiff("jlpt", translateJLPT, JLPT_levels)
+
+    # %%
+
+    # How strongly does grade level corrolate with each source?
+    print(df["grade"].unique())
+    gradeLevels = {
+        'grade 1': 1,
+        'grade 2': 2,
+        'grade 3': 3,
+        'grade 4': 4,
+        'grade 5': 5,
+        'grade 6': 6,
+        'junior high': 7,
+    }
+
+    def translateGradeLevel(levelStr):
+        try:
+            return gradeLevels[levelStr]
+        except:
+            return float('nan')
+
+    grade_levels = 7
+    grade_results = getAvgLevelDiff("grade", translateGradeLevel, grade_levels)
+
+    # %%
+
+    # How strongly does Jisho frequency level corrolate with each source?
+    print(max(df["frequency"].unique()))  # Ranges from 1 to 2495. So it's including more entries than joyo.
+    jisho_levels = 2495
+    # See comment on Joyo below. Bugged, and not really meaningful anyway.
+    # jisho_results = getAvgLevelDiff("frequency", intIsJustItself, jisho_levels)
+
+    # %%
+
+    # How strongly does Joyo rank corrolate with each source?
+    # TODO should really just rename that column.
+    print(max(df["Unnamed: 0"].unique()))  # Ranges from 0 to 2135.
+    joyo_levels = 2136
+
+    # We need level numbers to be 1..joyo_levels, inclusive
+    def translateJoyo(x):
+        try:
+            return x + 1
+        except:
+            return float('nan')
+
+    # Those bins look a little weird? Why's it using e^0 to e^3?
+    #    Each bin should correspond to a level number. We have more levels than bins though so something's wrong here.
+    # But really, these results aren't useful anyway since you don't learn by Joyo ranking. Same with Jisho.
+    # joyo_results = getAvgLevelDiff("Unnamed: 0", translateJoyo, joyo_levels)
+
+    # %%
+
+    # How strongly does Genki frequency level corrolate with each source?
+    # max isn't working on this? NaN throwing it off ?
+    possibleGenkiValues = df["Genki_Lesson"].unique()
+    possibleGenkiValues.sort()
+    print(possibleGenkiValues)
+
+    genki_levels = 0
+    for value in df["Genki_Lesson"].unique():
+        if (not np.isnan(value)):
+            genki_levels += 1
+    print(genki_levels, "possible valid values.")
+
+    # It looks like there is no lesson before lesson 3. A consequence of our source?
+    # http://genki.japantimes.co.jp/self/genki-kanji-list-linked-to-wwkanji
+    # We need level numbers to be 1..genki_levels, inclusive
+    def translateGenki(x):
+        try:
+            return x - 2
+        except:
+            return float('nan')
+
+    # Test that we get 1..genki_levels
+    print("1 =?=", translateGenki(3))
+    print(genki_levels, "=?=", translateGenki(23))
+    genki_results = getAvgLevelDiff("Genki_Lesson", translateGenki, genki_levels)
+
+    # %%
+
+    # Now compare them. If I want to read Twitter, what's the best option to learn? Wikipedia? Etc.
+    # Note that there is some inherent inaccuracy/rounding with 5 levels versus 60, need to take that into account.
+    results = [(wani_results, wani_levels, "WaniKani"),
+               (JLPT_results, JLPT_levels, "JLPT"),
+               (grade_results, grade_levels, "Grade"),
+               # (jisho_results, jisho_levels, "Jisho"), #This is frequency, not really a sequence you'd learn.
+               # (joyo_results, joyo_levels, "Jōyō"),  #This is a ranking system, not very relevant.
+               (genki_results, genki_levels, "Genki")]
+    # String for datasource name, string for best sequence, float for % match.
+    best_sequence_for_sources = {datasources[i]: ("Name of best sequence goes here", 1.0)
+                                 for i in range(len(datasources))}
+
+    # TODO I really should just use a dataframe from the start
+    percent_results_of_each_source = [[], [], [], []]
+    # Could also do it based on each sequence, might be more useful since we're picking a sequence?
+    # percent_results_of_each_sequence = [[]]
+    for (result, level, name) in results:
+        i = 0
+        for datasource in datasources:
+            correlationWithThisSource = result[i]
+            correlationWithThisSource = correlationWithThisSource / level
+            percent_results_of_each_source[i].append(correlationWithThisSource)
+            print(datasource, name, correlationWithThisSource)
+            # For now I'll just take the lowest percent, TODO figure out how to deal with inaccuracy later.
+            #    Maybe just say each has some +- inaccuracy based on number of levels.
+            if (best_sequence_for_sources[datasource][1] > correlationWithThisSource):
+                new_tup = (name, correlationWithThisSource)
+                best_sequence_for_sources[datasource] = new_tup
+            i = i + 1
+
+    result_df = pd.DataFrame(percent_results_of_each_source)
+    result_df.columns = [name for (_, _, name) in results]
+    result_df.index = [source for source in datasources]
+    print(result_df)
+
+    print("")
+    print("Results: ")
+    for result in best_sequence_for_sources:
+        print("Best for learning to read", result, ": ",
+              best_sequence_for_sources[result][0],
+              "with" + " {:.2f}".format(best_sequence_for_sources[result][1] * 100),
+              "% inaccuracy compared to actual usage on", result)
+    # The most levels are the most accurate right now. Joyo has perfect coverage obviously. Looks like Jisho also does.
+    # Why are they all around 32-36%? Consequence of only using joyo?
+    #    I guess it's a reasonable variation, these systems weren't chosen randomly, but can't perfectly model use.
+    # Also we only have the WaniKani/JLPT/Genki/etc data for the Joyo set, results might vary with more than the 2136.
+    #  Also maybe even ignore rank and just consider # appearances?
+
+    # Is Genki very good to consider? So little coverage. Additional metric to display?
+
+    # %% md
+
+    # https://stackoverflow.com/a/43348337
+    import matplotlib.ticker as ticker
+    # Currently this xaxis function is unused, doesn't work for scatter plot or something.
+    # Turn the x axis into names of sources
+    def formatterX(x, pos):
+        # The name of the data source
+        return results[x][2]
+        # if(x >= 1 and x <= 4):
+        #    return datasources[x-1]
+        # This shouldn't occur. Maybe print a warning but it'd be pretty noticeable.
+        # return x
+
+    # Translate 0.0 to 1.0 to 0.0 to 100.0
+    # Long floating points is an issue.
+    # Maybe force the y axis to use nice round numbers? 0, 10, 20...
+    #    Maybe we won't end up using this type of chart though.
+    def formatterY(y, pos):
+        return y * 100
+
+    fig = plt.figure(figsize=(13, 10))
+
+    dataX = [i for i in range(0, len(results))]
+    dataY = []
+    for source in datasources:
+        dataYPiece = [val for val in result_df.loc[source]]
+        dataY.append(dataYPiece)
+    sequence_names = [val[2] for val in results]
+    # Only need colors if I show them all on the same vertical line.
+    # colors = ["black", "blue", "red", "green"]
+    # correspondingColors = [colors[0] for i in range(1, 4*4+1)]
+
+    for ax_index in range(0, len(datasources)):
+        ax = fig.add_subplot(2, 2, ax_index + 1)
+        ax.scatter(dataX, dataY[ax_index])
+        props = {
+            # Inaccuracy is a strange word to use here. If there were 4 levels and it was
+            #    all off by 1 it'd be 25% "inaccuracy," right (should probably develop better tests, hard to
+            #    verify these large calculations)? So more, the average difference in level.
+            'title': 'Inaccuracy of learning ' + datasources[ax_index] + ' using each sequence',
+            'ylabel': 'Percent of inaccuracy'
+        }
+        ax.set(**props)
+        plt.xticks(range(len(results)), sequence_names, size='medium')
+    # plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(formatterX))#Doesn't work for scatter plot?
+    # plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(formatterY))
+
+    # fig.subplots_adjust(wspace=0, hspace=0)
+    # Prevent overlap
+    data = datasources[n]
+    data_x = dataX
+    data_y = dataY[n]
+    res = list()
+    for i, j, k in zip(data, data_x, data_y):
+        i.sort()
+        res.append(dict(
+            highest=int(max(i)),
+            lowest=int(min(i)),
+            open=int(np.percentile(i, 25)),
+            close=int(np.percentile(i, 75)),
+            strokes=j,
+        ))
+    return res
+
+
 if __name__ == '__main__':
-    print(box_1())
+    print(scatter(1))
